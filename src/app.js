@@ -9,6 +9,8 @@ const helmet = require('helmet');
 const morgan = require('morgan');
 const rateLimit = require('express-rate-limit');
 const compression = require('compression');
+const paymentRoutes = require('./routes/payment.routes');
+
 
 const { errorHandler, notFoundHandler } = require('./middlewares/error.middleware');
 
@@ -66,6 +68,7 @@ const authLimiter = rateLimit({
 });
 app.use('/api/v1/auth/login', authLimiter);
 app.use('/api/v1/auth/register', authLimiter);
+app.use('/api/v1/payments/webhook', express.raw({ type: 'application/json' }));
 
 // Body parsing
 app.use(express.json({ limit: '10mb' }));
@@ -96,6 +99,8 @@ app.use(`${API_PREFIX}/sessions`, sessionsRoutes);
 app.use(`${API_PREFIX}/reviews`, reviewsRoutes);
 app.use(`${API_PREFIX}/chat`, chatRoutes);
 app.use(`${API_PREFIX}/admin`, adminRoutes);
+app.use(`${API_PREFIX}/payments`, paymentRoutes);
+
 
 // ============ MANEJO DE ERRORES ============
 app.use(notFoundHandler);
