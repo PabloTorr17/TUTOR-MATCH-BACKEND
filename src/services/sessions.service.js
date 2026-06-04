@@ -7,7 +7,6 @@ const { supabase } = require('../config/supabase');
  * Crea una nueva asesoría
  */
 const createSession = async (tutorId, data) => {
-  // Verificar que el usuario tiene rol tutor
   const { data: tutor } = await supabase
     .from('users')
     .select('roles')
@@ -24,7 +23,7 @@ const createSession = async (tutorId, data) => {
     session_type, tags,
   } = data;
 
-  const { data: session, error } = await supabase
+  const { data: session, error: createError } = await supabase
     .from('sessions')
     .insert({
       tutor_id: tutorId,
@@ -44,7 +43,6 @@ const createSession = async (tutorId, data) => {
       tags: tags || [],
       status: 'available',
     })
-    // DESPUÉS
     .select(`
       *,
       tutor:users!sessions_tutor_id_fkey(
@@ -54,9 +52,9 @@ const createSession = async (tutorId, data) => {
     `)
     .single();
 
-  if (error) {
-  console.error('SUPABASE ERROR createSession:', JSON.stringify(error, null, 2));
-  throw { status: 500, message: error.message };
+  if (createError) {
+    console.error('SUPABASE ERROR createSession:', JSON.stringify(createError, null, 2));
+    throw { status: 500, message: createError.message };
   }
 
   return session;
@@ -69,23 +67,21 @@ const getSessions = async (filters = {}, pagination = {}) => {
   const { page = 1, limit = 10 } = pagination;
   const offset = (page - 1) * limit;
 
-  // DESPUÉS
-    let query = supabase
-      .from('sessions')
-      .select(`
-        *,
-        tutor:users!sessions_tutor_id_fkey(
-          id, full_name, avatar_url, career, semester,
-          profile:profiles(rating, total_sessions, attendance_rate)
-        ),
-        enrollments(count)
-      `, { count: 'exact' })
+  let query = supabase
+    .from('sessions')
+    .select(`
+      *,
+      tutor:users!sessions_tutor_id_fkey(
+        id, full_name, avatar_url, career, semester,
+        profile:profiles(rating, total_sessions, attendance_rate)
+      ),
+      enrollments(count)
+    `, { count: 'exact' })
     .eq('status', 'available')
     .gte('scheduled_at', new Date().toISOString())
     .order('scheduled_at', { ascending: true })
     .range(offset, offset + limit - 1);
 
-  // Filtros opcionales
   if (filters.subject) query = query.ilike('subject', `%${filters.subject}%`);
   if (filters.modality) query = query.eq('modality', filters.modality);
   if (filters.difficulty) query = query.eq('difficulty', filters.difficulty);
@@ -96,11 +92,11 @@ const getSessions = async (filters = {}, pagination = {}) => {
   }
   if (filters.tutor_id) query = query.eq('tutor_id', filters.tutor_id);
 
-  const { data: sessions, error, count } = await query;
+  const { data: sessions, error: listError, count } = await query;
 
-  if (error) {
-  console.error('SUPABASE ERROR getSessions:', JSON.stringify(error, null, 2));
-  throw { status: 500, message: error.message };
+  if (listError) {
+    console.error('SUPABASE ERROR getSessions:', JSON.stringify(listError, null, 2));
+    throw { status: 500, message: listError.message };
   }
 
   return { sessions, total: count };
@@ -110,9 +106,8 @@ const getSessions = async (filters = {}, pagination = {}) => {
  * Obtiene una asesoría por ID con todos sus detalles
  */
 const getSessionById = async (sessionId, userId = null) => {
-  const { data: session, error } = await supabase
+  const { data: session, error: fetchError } = await supabase
     .from('sessions')
-    // DESPUÉS
     .select(`
       *,
       tutor:users!sessions_tutor_id_fkey(
@@ -127,14 +122,8 @@ const getSessionById = async (sessionId, userId = null) => {
     .eq('id', sessionId)
     .single();
 
-  const { data: sessions, error, count } = await query;
+  if (fetchError) throw { status: 404, message: 'Asesoría no encontrada' };
 
-  if (error) {
-    console.error('SUPABASE ERROR getSessions FULL:', JSON.stringify(error, null, 2));
-    throw { status: 500, message: error.message };
-  }
-
-  // Verificar si el usuario actual está inscrito
   if (userId) {
     session.is_enrolled = session.enrollments?.some(e => e.user_id === userId && e.status === 'confirmed');
     session.is_owner = session.tutor_id === userId;
@@ -147,7 +136,6 @@ const getSessionById = async (sessionId, userId = null) => {
  * Inscribe a un usuario en una asesoría
  */
 const enrollInSession = async (sessionId, userId) => {
-  // Obtener la sesión
   const { data: session, error: sessionError } = await supabase
     .from('sessions')
     .select('*')
@@ -159,7 +147,6 @@ const enrollInSession = async (sessionId, userId) => {
   if (session.status !== 'available') throw { status: 400, message: 'Esta asesoría no está disponible' };
   if (session.available_spots <= 0) throw { status: 400, message: 'No hay lugares disponibles' };
 
-  // Verificar inscripción existente
   const { data: existing } = await supabase
     .from('enrollments')
     .select('id, status')
@@ -169,7 +156,6 @@ const enrollInSession = async (sessionId, userId) => {
 
   if (existing) {
     if (existing.status === 'confirmed') throw { status: 409, message: 'Ya estás inscrito en esta asesoría' };
-    // Reactivar inscripción cancelada
     const { data: reactivated } = await supabase
       .from('enrollments')
       .update({ status: 'confirmed', enrolled_at: new Date().toISOString() })
@@ -179,7 +165,6 @@ const enrollInSession = async (sessionId, userId) => {
     return reactivated;
   }
 
-  // Crear nueva inscripción
   const { data: enrollment, error: enrollError } = await supabase
     .from('enrollments')
     .insert({ session_id: sessionId, user_id: userId, status: 'confirmed' })
@@ -188,7 +173,6 @@ const enrollInSession = async (sessionId, userId) => {
 
   if (enrollError) throw { status: 500, message: 'Error al inscribirse' };
 
-  // Decrementar lugares disponibles
   await supabase
     .from('sessions')
     .update({
@@ -204,14 +188,14 @@ const enrollInSession = async (sessionId, userId) => {
  * Cancela inscripción en una asesoría
  */
 const unenrollFromSession = async (sessionId, userId) => {
-  const { data: enrollment, error } = await supabase
+  const { data: enrollment, error: unenrollError } = await supabase
     .from('enrollments')
     .select('id, status')
     .eq('session_id', sessionId)
     .eq('user_id', userId)
     .single();
 
-  if (error || !enrollment) throw { status: 404, message: 'No estás inscrito en esta asesoría' };
+  if (unenrollError || !enrollment) throw { status: 404, message: 'No estás inscrito en esta asesoría' };
   if (enrollment.status === 'cancelled') throw { status: 400, message: 'Ya cancelaste esta inscripción' };
 
   await supabase
@@ -219,8 +203,12 @@ const unenrollFromSession = async (sessionId, userId) => {
     .update({ status: 'cancelled' })
     .eq('id', enrollment.id);
 
-  // Incrementar lugares disponibles
-  const { data: session } = await supabase.from('sessions').select('available_spots, max_spots, status').eq('id', sessionId).single();
+  const { data: session } = await supabase
+    .from('sessions')
+    .select('available_spots, max_spots, status')
+    .eq('id', sessionId)
+    .single();
+
   if (session) {
     await supabase
       .from('sessions')
@@ -237,9 +225,9 @@ const unenrollFromSession = async (sessionId, userId) => {
 /**
  * Actualiza el estado de una asesoría
  */
-const updateSessionStatus = async (sessionId, tutorId, status) => {
+const updateSessionStatus = async (sessionId, tutorId, newStatus) => {
   const validStatuses = ['available', 'in_progress', 'completed', 'cancelled'];
-  if (!validStatuses.includes(status)) {
+  if (!validStatuses.includes(newStatus)) {
     throw { status: 400, message: `Estado inválido. Estados válidos: ${validStatuses.join(', ')}` };
   }
 
@@ -252,20 +240,20 @@ const updateSessionStatus = async (sessionId, tutorId, status) => {
   if (!session) throw { status: 404, message: 'Asesoría no encontrada' };
   if (session.tutor_id !== tutorId) throw { status: 403, message: 'Solo el tutor puede cambiar el estado' };
 
-  const { data: updated, error } = await supabase
+  const { data: updated, error: updateError } = await supabase
     .from('sessions')
-    .update({ status, updated_at: new Date().toISOString() })
+    .update({ status: newStatus, updated_at: new Date().toISOString() })
     .eq('id', sessionId)
     .select()
     .single();
 
-  if (error) throw { status: 500, message: 'Error actualizando estado' };
+  if (updateError) throw { status: 500, message: 'Error actualizando estado' };
 
   return updated;
 };
 
 /**
- * Asesorías rápidas - "necesito ayuda ahora"
+ * Asesorías rápidas
  */
 const createQuickSession = async (tutorId, { subject, description }) => {
   return createSession(tutorId, {
