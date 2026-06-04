@@ -44,16 +44,19 @@ const createSession = async (tutorId, data) => {
       tags: tags || [],
       status: 'available',
     })
+    // DESPUÉS
     .select(`
       *,
-      tutor:users!sessions_tutor_id_fkey(id, full_name, avatar_url, career),
-      profile:profiles!profiles_user_id_fkey(rating, total_sessions)
+      tutor:users!sessions_tutor_id_fkey(
+        id, full_name, avatar_url, career,
+        profile:profiles(rating, total_sessions)
+      )
     `)
     .single();
 
   if (error) {
-    console.error('Error creando sesión:', error);
-    throw { status: 500, message: 'Error al crear la asesoría' };
+  console.error('SUPABASE ERROR createSession:', JSON.stringify(error, null, 2));
+  throw { status: 500, message: error.message };
   }
 
   return session;
@@ -66,14 +69,17 @@ const getSessions = async (filters = {}, pagination = {}) => {
   const { page = 1, limit = 10 } = pagination;
   const offset = (page - 1) * limit;
 
-  let query = supabase
-    .from('sessions')
-    .select(`
-      *,
-      tutor:users!sessions_tutor_id_fkey(id, full_name, avatar_url, career, semester),
-      tutor_profile:profiles!profiles_user_id_fkey(rating, total_sessions, attendance_rate),
-      enrollments(count)
-    `, { count: 'exact' })
+  // DESPUÉS
+    let query = supabase
+      .from('sessions')
+      .select(`
+        *,
+        tutor:users!sessions_tutor_id_fkey(
+          id, full_name, avatar_url, career, semester,
+          profile:profiles(rating, total_sessions, attendance_rate)
+        ),
+        enrollments(count)
+      `, { count: 'exact' })
     .eq('status', 'available')
     .gte('scheduled_at', new Date().toISOString())
     .order('scheduled_at', { ascending: true })
@@ -92,7 +98,10 @@ const getSessions = async (filters = {}, pagination = {}) => {
 
   const { data: sessions, error, count } = await query;
 
-  if (error) throw { status: 500, message: 'Error obteniendo asesorías' };
+  if (error) {
+  console.error('SUPABASE ERROR getSessions:', JSON.stringify(error, null, 2));
+  throw { status: 500, message: error.message };
+  }
 
   return { sessions, total: count };
 };
@@ -103,10 +112,13 @@ const getSessions = async (filters = {}, pagination = {}) => {
 const getSessionById = async (sessionId, userId = null) => {
   const { data: session, error } = await supabase
     .from('sessions')
+    // DESPUÉS
     .select(`
       *,
-      tutor:users!sessions_tutor_id_fkey(id, full_name, avatar_url, career, semester, email),
-      tutor_profile:profiles!profiles_user_id_fkey(rating, total_sessions, attendance_rate, bio, subjects),
+      tutor:users!sessions_tutor_id_fkey(
+        id, full_name, avatar_url, career, semester, email,
+        profile:profiles(rating, total_sessions, attendance_rate, bio, subjects)
+      ),
       enrollments(
         id, user_id, status, enrolled_at,
         user:users(id, full_name, avatar_url, career)
@@ -115,7 +127,12 @@ const getSessionById = async (sessionId, userId = null) => {
     .eq('id', sessionId)
     .single();
 
-  if (error) throw { status: 404, message: 'Asesoría no encontrada' };
+  const { data: sessions, error, count } = await query;
+
+  if (error) {
+    console.error('SUPABASE ERROR getSessions FULL:', JSON.stringify(error, null, 2));
+    throw { status: 500, message: error.message };
+  }
 
   // Verificar si el usuario actual está inscrito
   if (userId) {
