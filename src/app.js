@@ -10,6 +10,9 @@ const morgan = require('morgan');
 const rateLimit = require('express-rate-limit');
 const compression = require('compression');
 const paymentRoutes = require('./routes/payment.routes');
+const uploadRoutes = require('./routes/upload.routes');
+const notificationsRoutes = require('./routes/notifications.routes');
+const googleAuthRoutes = require('./routes/google-auth.routes');
 
 
 const { errorHandler, notFoundHandler } = require('./middlewares/error.middleware');
@@ -100,6 +103,9 @@ app.use(`${API_PREFIX}/reviews`, reviewsRoutes);
 app.use(`${API_PREFIX}/chat`, chatRoutes);
 app.use(`${API_PREFIX}/admin`, adminRoutes);
 app.use(`${API_PREFIX}/payments`, paymentRoutes);
+app.use(`${API_PREFIX}/upload`, uploadRoutes);
+app.use(`${API_PREFIX}/notifications`, notificationsRoutes);
+app.use(`${API_PREFIX}/auth`, googleAuthRoutes);
 
 
 // ============ MANEJO DE ERRORES ============

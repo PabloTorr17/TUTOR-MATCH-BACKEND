@@ -2,6 +2,7 @@
 // Lógica de negocio para asesorías
 
 const { supabase } = require('../config/supabase');
+const notifService = require('./notifications.service');
 
 /**
  * Crea una nueva asesoría
@@ -56,6 +57,8 @@ const createSession = async (tutorId, data) => {
     console.error('SUPABASE ERROR createSession:', JSON.stringify(createError, null, 2));
     throw { status: 500, message: createError.message };
   }
+
+  notifService.notifyInterestedUsers(session).catch(console.error);
 
   return session;
 };
@@ -180,6 +183,9 @@ const enrollInSession = async (sessionId, userId) => {
       status: session.available_spots - 1 === 0 ? 'full' : 'available',
     })
     .eq('id', sessionId);
+
+  
+  notifService.notifyTutorOnEnrollment(sessionId, userId).catch(console.error);
 
   return enrollment;
 };
