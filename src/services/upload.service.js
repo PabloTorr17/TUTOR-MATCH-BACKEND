@@ -2,7 +2,7 @@
 // Subida de archivos a Supabase Storage
 
 const { supabase } = require('../config/supabase');
-const { v4: uuidv4 } = require('uuid');
+const { randomUUID } = require('crypto');
 
 /**
  * Sube un avatar de usuario a Supabase Storage
@@ -49,7 +49,7 @@ const uploadAvatar = async (userId, buffer, mimeType) => {
  */
 const uploadSessionFile = async (sessionId, userId, buffer, mimeType, originalName) => {
   const ext = originalName.split('.').pop();
-  const fileName = `${uuidv4()}.${ext}`;
+  const fileName = `${randomUUID()}.${ext}`;
   const path = `${sessionId}/${userId}/${fileName}`;
 
   const { error } = await supabase.storage
